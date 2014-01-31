@@ -10,25 +10,33 @@ from mopidy import models, local
 from mopidy.local import translator
 from mopidy.utils import path
 
-from whoosh import fields, index, query as query_lib
+from whoosh import collectors, fields, index, query as query_lib
 
 logger = logging.getLogger('mopidy_local_whoosh.library')
 
-# TODO: add type and switch to a single generic stored field
 schema = fields.Schema(
     uri=fields.ID(stored=True, unique=True),
+    type=fields.ID(stored=True),
+    object=fields.STORED(),
     name=fields.TEXT(),
     artists=fields.TEXT(),
     album=fields.TEXT(),
-    content=fields.TEXT(),
-    track=fields.STORED(),
-    listing=fields.STORED)
+    content=fields.TEXT())
 
 mapping = {'uri': 'uri',
            'track_name': 'name',
            'album': 'album',
            'artist': 'artists',
            'any': 'content'}
+
+
+class _CountingCollector(collectors.Collector):
+    def prepare(self, top_searcher, q, context):
+        super(_CountingCollector, self).prepare(top_searcher, q, context)
+        self.count = 0
+
+    def collect(self, sub_docnum):
+        self.count += 1
 
 
 class WhooshLibrary(local.Library):
@@ -47,26 +55,29 @@ class WhooshLibrary(local.Library):
 
     def load(self):
         self._index.refresh()
-        # TODO: need to filter by type now
-        return self._index.doc_count()
+        with self._index.searcher() as searcher:
+            counter = _CountingCollector()
+            query = query_lib.Term('type', 'track')
+            searcher.search_with_collector(query, counter)
+        return counter.count
 
     def lookup(self, uri):
         with self._index.searcher() as searcher:
-            result = searcher.document(uri=uri)
-            if result and 'track' in result:
-                return result['track']
+            result = searcher.document(uri=uri, type='track')
+            if result:
+                return result['object']
         return []
 
     def browse(self, uri):
         with self._index.searcher() as searcher:
-            result = searcher.document(uri=uri)
-            if result and 'listing' in result:
-                return result['listing']
+            result = searcher.document(uri=uri, type='directory')
+            if result:
+                return result['object']
         return []
 
     def search(self, query=None, limit=100, offset=0, uris=None, exact=False):
         # TODO: add limit and offset, and total to results
-        parts = []
+        parts = [query_lib.Term('type', 'track')]
         for name, values in query.items():
             if name not in mapping:
                 continue
@@ -90,7 +101,7 @@ class WhooshLibrary(local.Library):
 
         with self._index.searcher() as searcher:
             results = searcher.search(whoosh_query, limit=limit)
-            tracks = [result['track'] for result in results]
+            tracks = [result['object'] for result in results]
 
         return models.SearchResult(tracks=tracks)
 
@@ -98,9 +109,9 @@ class WhooshLibrary(local.Library):
         self._writer = self._index.writer()
 
         with self._index.reader() as reader:
-            for docnum, doc in reader.iter_docs():
-                if 'track' in doc:
-                    yield doc['track']
+            for docnum, document in reader.iter_docs():
+                if document['type'] == 'track':
+                    yield document['object']
 
     def add(self, track):
         content = [track.name, track.album.name]
@@ -108,11 +119,12 @@ class WhooshLibrary(local.Library):
 
         self._writer.update_document(
             uri=unicode(track.uri),
+            type='track',
+            object=track,
             name=track.name,
             artists=' '.join(a.name for a in track.artists),
             album=track.album.name,
-            content=' '.join(content),
-            track=track)
+            content=' '.join(content))
 
         path = translator.local_track_uri_to_path(track.uri, b'/')
         path = path.decode(sys.getfilesystemencoding(), 'replace')
@@ -133,10 +145,13 @@ class WhooshLibrary(local.Library):
             else:
                 with self._index.searcher() as searcher:
                     document = searcher.document(uri=dir_ref.uri)
-                    document = document or {'uri': dir_ref.uri, 'listing': []}
 
-            if ref not in document['listing']:
-                document['listing'].append(ref)
+            if not document:
+                document = {
+                    'uri': dir_ref.uri, 'type': 'directory', 'object': []}
+
+            if ref not in document['object']:
+                document['object'].append(ref)
 
             if dir_ref.uri in self._directories:
                 break
@@ -146,7 +161,7 @@ class WhooshLibrary(local.Library):
 
     def remove(self, uri):
         self._writer.delete_by_term('uri', uri)
-        # TODO: update dirs
+        # TODO: cleanup dirs etc.
 
     def flush(self):
         self._writer.commit(merge=False)
