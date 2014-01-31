@@ -6,8 +6,9 @@ import re
 import shutil
 import sys
 
-from mopidy import models, local
+from mopidy import local
 from mopidy.local import translator
+from mopidy.models import Ref, SearchResult
 from mopidy.utils import path
 
 from whoosh import collectors, fields, index, query as query_lib
@@ -16,12 +17,14 @@ logger = logging.getLogger('mopidy_local_whoosh.library')
 
 schema = fields.Schema(
     uri=fields.ID(stored=True, unique=True),
+    parent=fields.ID(stored=True),
+    pathname=fields.ID(stored=True),
     type=fields.ID(stored=True),
-    object=fields.STORED(),
     name=fields.TEXT(),
     artists=fields.TEXT(),
     album=fields.TEXT(),
-    content=fields.TEXT())
+    content=fields.TEXT(),
+    track=fields.STORED())
 
 mapping = {'uri': 'uri',
            'track_name': 'name',
@@ -44,13 +47,13 @@ def _track_to_refs(track):
     track_path = track_path.decode(sys.getfilesystemencoding(), 'replace')
     parts = re.findall(r'([^/]+)', track_path)
 
-    track_ref = models.Ref.track(uri=track.uri, name=parts.pop())
-    refs = [models.Ref.directory(uri='local:directory')]
+    track_ref = Ref.track(uri=track.uri, name=parts.pop())
+    refs = [Ref.directory(uri='local:directory')]
 
     for i in range(len(parts)):
         directory = '/'.join(parts[:i+1])
         uri = translator.path_to_local_directory_uri(directory)
-        refs.append(models.Ref.directory(uri=unicode(uri), name=parts[i]))
+        refs.append(Ref.directory(uri=unicode(uri), name=parts[i]))
 
     return refs + [track_ref]
 
@@ -61,7 +64,7 @@ class WhooshLibrary(local.Library):
     def __init__(self, config):
         self._data_dir = os.path.join(config['local']['data_dir'], b'whoosh')
         self._writer = None
-        self._directories = {}
+        self._directories = set()
 
         if not os.path.exists(self._data_dir):
             path.get_or_create_dir(self._data_dir)
@@ -72,24 +75,32 @@ class WhooshLibrary(local.Library):
     def load(self):
         self._index.refresh()
         with self._index.searcher() as searcher:
-            counter = _CountingCollector()
+            collector = _CountingCollector()
             query = query_lib.Term('type', 'track')
-            searcher.search_with_collector(query, counter)
-        return counter.count
+            searcher.search_with_collector(query, collector)
+        return collector.count
 
     def lookup(self, uri):
         with self._index.searcher() as searcher:
             result = searcher.document(uri=uri, type='track')
             if result:
-                return result['object']
-        return []
+                return result['track']
+        return None
 
     def browse(self, uri):
+        result = []
+
         with self._index.searcher() as searcher:
-            result = searcher.document(uri=uri, type='directory')
-            if result:
-                return result['object']
-        return []
+            query = query_lib.Term('parent', uri)
+            for doc in searcher.search(query, limit=None):
+                if doc['type'] == 'track':
+                    ref = Ref.track(uri=doc['uri'], name=doc['pathname'])
+                else:
+                    ref = Ref.directory(uri=doc['uri'], name=doc['pathname'])
+                result.append(ref)
+
+        result.sort(key=lambda ref: (ref.type, ref.name))
+        return result
 
     def search(self, query=None, limit=100, offset=0, uris=None, exact=False):
         # TODO: add limit and offset, and total to results
@@ -117,9 +128,9 @@ class WhooshLibrary(local.Library):
 
         with self._index.searcher() as searcher:
             results = searcher.search(whoosh_query, limit=limit)
-            tracks = [result['object'] for result in results]
+            tracks = [result['track'] for result in results]
 
-        return models.SearchResult(tracks=tracks)
+        return SearchResult(tracks=tracks)
 
     def begin(self):
         self._writer = self._index.writer()
@@ -127,69 +138,46 @@ class WhooshLibrary(local.Library):
         with self._index.reader() as reader:
             for docnum, document in reader.iter_docs():
                 if document['type'] == 'track':
-                    yield document['object']
+                    yield document['track']
 
     def add(self, track):
         content = [track.name, track.album.name]
         content.extend(a.name for a in track.artists)
+        refs = _track_to_refs(track)
 
         self._writer.update_document(
-            uri=unicode(track.uri),
-            type='track',
-            object=track,
-            name=track.name,
+            uri=unicode(track.uri), type='track',
+            parent=refs[-2].uri, pathname=refs[-1].name,
+            name=track.name, album=track.album.name,
             artists=' '.join(a.name for a in track.artists),
-            album=track.album.name,
-            content=' '.join(content))
+            content=' '.join(content), track=track)
 
-        path = translator.local_track_uri_to_path(track.uri, b'/')
-        path = path.decode(sys.getfilesystemencoding(), 'replace')
-        parts = re.findall(r'([^/]+)', path)
+        # Loop over everything between root and track:
+        for i in range(1, len(refs)-1):
+            uri = unicode(refs[i].uri)
+            name = refs[i].name
+            parent = unicode(refs[i-1].uri)
 
-        ref = models.Ref.track(uri=track.uri, name=parts.pop())
-        dir_refs = [models.Ref.directory(uri='local:directory')]
+            if uri in self._directories:
+                continue
+            self._directories.add(uri)
 
-        for i in range(len(parts)):
-            directory = '/'.join(parts[:i+1])
-            uri = translator.path_to_local_directory_uri(directory)
-            dir_refs.append(
-                models.Ref.directory(uri=unicode(uri), name=parts[i]))
+            with self._index.searcher() as searcher:
+                if searcher.document(uri=uri):
+                    continue
 
-        for dir_ref in reversed(dir_refs):
-            if dir_ref.uri in self._directories:
-                document = self._directories[dir_ref.uri]
-            else:
-                with self._index.searcher() as searcher:
-                    document = searcher.document(uri=dir_ref.uri)
-
-            if not document:
-                document = {
-                    'uri': dir_ref.uri, 'type': 'directory', 'object': []}
-
-            if ref not in document['object']:
-                document['object'].append(ref)
-
-            if dir_ref.uri in self._directories:
-                break
-
-            self._directories[dir_ref.uri] = document
-            ref = dir_ref
+            self._writer.update_document(
+                uri=uri, type='directory', parent=parent, pathname=name)
 
     def remove(self, uri):
         self._writer.delete_by_term('uri', uri)
-        # TODO: cleanup dirs etc.
 
     def flush(self):
         self._writer.commit(merge=False)
         self._writer = self._index.writer()
-        for document in self._directories.values():
-            self._writer.update_document(**document)
-        self._directories = {}
         return True
 
     def close(self):
-        for document in self._directories.values():
-            self._writer.update_document(**document)
         self._writer.commit(optimize=True)
 
     def clear(self):
