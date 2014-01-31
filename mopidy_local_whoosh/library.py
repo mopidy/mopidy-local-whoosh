@@ -1,5 +1,6 @@
 from __future__ import unicode_literals
 
+import collections
 import logging
 import os
 import re
@@ -178,6 +179,32 @@ class WhooshLibrary(local.Library):
         return True
 
     def close(self):
+        self.flush()  # Make sure state gets to disk
+
+        counts = collections.defaultdict(int)
+        parents = {}
+
+        # Loop over everything to count folders
+        with self._index.reader() as reader:
+            for docnum, doc in reader.iter_docs():
+                if doc['type'] == 'directory':
+                    counts.setdefault(doc['uri'], 0)
+                counts[doc['parent']] += 1
+                parents[doc['uri']] = doc['parent']
+
+        # Delete empty folders until we can't find any
+        while True:
+            initial_size = len(counts)
+            for uri, count in counts.items():
+                if count < 1:
+                    counts[parents[uri]] -= 1
+                    self._writer.delete_by_term('uri', uri)
+                    del counts[uri]
+
+            if initial_size == len(counts):
+                break
+
+        # Force write + optimization of index now that we are done cleaning.
         self._writer.commit(optimize=True)
 
     def clear(self):
