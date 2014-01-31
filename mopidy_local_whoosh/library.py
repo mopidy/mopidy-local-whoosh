@@ -45,7 +45,10 @@ class WhooshLibrary(local.Library):
 
     def lookup(self, uri):
         with self._index.searcher() as searcher:
-            return searcher.document(uri=uri)['track']
+            result = searcher.document(uri=uri)
+            if result:
+                return [result['track']]
+        return []
 
     def search(self, query=None, limit=100, offset=0, uris=None, exact=False):
         # TODO: add limit and offset, and total to results
