@@ -107,7 +107,7 @@ class WhooshLibrary(local.Library):
         self._writer = self._index.writer()
         return True
 
-    def commit(self):
+    def close(self):
         self._writer.commit(optimize=True)
 
     def clear(self):
