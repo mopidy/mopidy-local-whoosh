@@ -39,6 +39,22 @@ class _CountingCollector(collectors.Collector):
         self.count += 1
 
 
+def _track_to_refs(track):
+    track_path = translator.local_track_uri_to_path(track.uri, b'/')
+    track_path = track_path.decode(sys.getfilesystemencoding(), 'replace')
+    parts = re.findall(r'([^/]+)', track_path)
+
+    track_ref = models.Ref.track(uri=track.uri, name=parts.pop())
+    refs = [models.Ref.directory(uri='local:directory')]
+
+    for i in range(len(parts)):
+        directory = '/'.join(parts[:i+1])
+        uri = translator.path_to_local_directory_uri(directory)
+        refs.append(models.Ref.directory(uri=unicode(uri), name=parts[i]))
+
+    return refs + [track_ref]
+
+
 class WhooshLibrary(local.Library):
     name = 'whoosh'
 
