@@ -10,12 +10,12 @@ Mopidy-Local-Whoosh
     :target: https://pypi.python.org/pypi/Mopidy-Local-Whoosh/
     :alt: Number of PyPI downloads
 
-.. image:: https://travis-ci.org/adamcik/mopidy-local-whoosh.png?branch=master
-    :target: https://travis-ci.org/adamcik/mopidy-local-whoosh
+.. image:: https://travis-ci.org/mopidy/mopidy-local-whoosh.png?branch=master
+    :target: https://travis-ci.org/mopidy/mopidy-local-whoosh
     :alt: Travis CI build status
 
-.. image:: https://coveralls.io/repos/adamcik/mopidy-local-whoosh/badge.png?branch=master
-   :target: https://coveralls.io/r/adamcik/mopidy-local-whoosh?branch=master
+.. image:: https://coveralls.io/repos/mopidy/mopidy-local-whoosh/badge.png?branch=master
+   :target: https://coveralls.io/r/mopidy/mopidy-local-whoosh?branch=master
    :alt: Test coverage
 
 Whoosh local library extension.
@@ -31,15 +31,26 @@ Install by running::
 Or, if available, install the Debian/Ubuntu package from `apt.mopidy.com
 <http://apt.mopidy.com/>`_.
 
+.. warning::
+
+    This plugin makes no attempts to handle whoosh version changes. We support
+    whoosh 2.x, but we you will need to rescan due to internal changes in
+    whoosh indexes etc when changing upgrading.
+
 
 Configuration
 =============
 
-Before starting Mopidy, you must add configuration for
-Mopidy-Local-Whoosh to your Mopidy configuration file::
+Before starting Mopidy, you must change your configuration to switch to using
+Mopidy-Local-Whoosh as your preferred local library::
 
-    [local-whoosh]
-    # TODO: Add example of extension config
+    [local]
+    library = whoosh
+
+
+Once this has been set you can re-scan your library to populate whoosh::
+
+    mopidy local scan
 
 
 Project resources

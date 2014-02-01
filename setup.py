@@ -13,7 +13,7 @@ def get_version(filename):
 setup(
     name='Mopidy-Local-Whoosh',
     version=get_version('mopidy_local_whoosh/__init__.py'),
-    url='https://github.com/adamcik/mopidy-local-whoosh',
+    url='https://github.com/mopidy/mopidy-local-whoosh',
     license='Apache License, Version 2.0',
     author='Thomas Adamcik',
     author_email='thomas@adamcik.no',
@@ -25,7 +25,7 @@ setup(
     install_requires=[
         'setuptools',
         'Mopidy >= 0.18',
-        'Whoosh',
+        'Whoosh >= 2.0',
     ],
     test_suite='nose.collector',
     tests_require=[
