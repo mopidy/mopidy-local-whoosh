@@ -11,20 +11,23 @@ from mopidy.local import translator
 from mopidy.models import Ref, SearchResult
 from mopidy.utils import path
 
-from whoosh import collectors, fields, index, query as query_lib
+import whoosh.collectors
+import whoosh.fields
+import whoosh.index
+import whoosh.query
 
 logger = logging.getLogger(__name__)
 
-schema = fields.Schema(
-    uri=fields.ID(stored=True, unique=True),
-    parent=fields.ID(stored=True),
-    pathname=fields.ID(stored=True),
-    type=fields.ID(stored=True),
-    name=fields.TEXT(),
-    artists=fields.TEXT(),
-    album=fields.TEXT(),
-    content=fields.TEXT(),
-    track=fields.STORED())
+schema = whoosh.fields.Schema(
+    uri=whoosh.fields.ID(stored=True, unique=True),
+    parent=whoosh.fields.ID(stored=True),
+    pathname=whoosh.fields.ID(stored=True),
+    type=whoosh.fields.ID(stored=True),
+    name=whoosh.fields.TEXT(),
+    artists=whoosh.fields.TEXT(),
+    album=whoosh.fields.TEXT(),
+    content=whoosh.fields.TEXT(),
+    track=whoosh.fields.STORED())
 
 mapping = {'uri': 'uri',
            'track_name': 'name',
@@ -33,7 +36,7 @@ mapping = {'uri': 'uri',
            'any': 'content'}
 
 
-class _CountingCollector(collectors.Collector):
+class _CountingCollector(whoosh.collectors.Collector):
     """Collector which only counts documents found without fetching."""
     def prepare(self, top_searcher, q, context):
         super(_CountingCollector, self).prepare(top_searcher, q, context)
@@ -69,15 +72,15 @@ class WhooshLibrary(local.Library):
 
         if not os.path.exists(self._data_dir):
             path.get_or_create_dir(self._data_dir)
-            self._index = index.create_in(self._data_dir, schema)
+            self._index = whoosh.index.create_in(self._data_dir, schema)
         else:
-            self._index = index.open_dir(self._data_dir)
+            self._index = whoosh.index.open_dir(self._data_dir)
 
     def load(self):
         self._index.refresh()
         with self._index.searcher() as searcher:
             collector = _CountingCollector()
-            query = query_lib.Term('type', 'track')
+            query = whoosh.query.Term('type', 'track')
             searcher.search_with_collector(query, collector)
         return collector.count
 
@@ -92,7 +95,7 @@ class WhooshLibrary(local.Library):
         result = []
 
         with self._index.searcher() as searcher:
-            query = query_lib.Term('parent', uri)
+            query = whoosh.query.Term('parent', uri)
             for doc in searcher.search(query, limit=None):
                 if doc['type'] == 'track':
                     ref = Ref.track(uri=doc['uri'], name=doc['pathname'])
@@ -106,7 +109,7 @@ class WhooshLibrary(local.Library):
     def search(self, query=None, limit=100, offset=0, uris=None, exact=False):
         # TODO: add limit and offset, and total to results
 
-        parts = [query_lib.Term('type', 'track')]
+        parts = [whoosh.query.Term('type', 'track')]
         for name, values in query.items():
             if name not in mapping:
                 continue
@@ -118,14 +121,15 @@ class WhooshLibrary(local.Library):
             for value in values:
                 tokens = field.process_text(value, mode="query")
                 if exact:
-                    terms.append(query_lib.Phrase(field_name, list(tokens)))
+                    terms.append(whoosh.query.Phrase(field_name, list(tokens)))
                 else:
-                    terms.append(query_lib.And([
-                        query_lib.FuzzyTerm(field_name, t) for t in tokens]))
+                    fuzzy_phrase = whoosh.query.And([
+                        whoosh.query.FuzzyTerm(field_name, t) for t in tokens])
+                    terms.append(fuzzy_phrase)
 
-            parts.append(query_lib.Or(terms))
+            parts.append(whoosh.query.Or(terms))
 
-        whoosh_query = query_lib.And(parts)
+        whoosh_query = whoosh.query.And(parts)
         logger.debug('Performing search: %s', whoosh_query)
 
         with self._index.searcher() as searcher:
