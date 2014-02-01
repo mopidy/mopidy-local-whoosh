@@ -133,7 +133,10 @@ class WhooshLibrary(local.Library):
         self._counts = {}
 
         with self._index.reader() as reader:
-            for docnum, doc in reader.iter_docs():
+            # We don't use iter_docs as it does the same as this, but breaks
+            # backwards compatibility pre 2.5
+            for docnum in reader.all_doc_ids():
+                doc = reader.stored_fields(docnum)
                 self._counts.setdefault(doc['parent'], 0)
                 self._counts[doc['parent']] += 1
 
