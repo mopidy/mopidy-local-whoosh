@@ -11,7 +11,7 @@ from mopidy.local import translator
 from mopidy.models import Ref, SearchResult
 from mopidy.utils import path
 
-import whoosh.collectors
+import whoosh
 import whoosh.fields
 import whoosh.index
 import whoosh.query
@@ -34,16 +34,6 @@ mapping = {'uri': 'uri',
            'album': 'album',
            'artist': 'artists',
            'any': 'content'}
-
-
-class _CountingCollector(whoosh.collectors.Collector):
-    """Collector which only counts documents found without fetching."""
-    def prepare(self, top_searcher, q, context):
-        super(_CountingCollector, self).prepare(top_searcher, q, context)
-        self.count = 0
-
-    def collect(self, sub_docnum):
-        self.count += 1
 
 
 def _track_to_refs(track):
@@ -79,10 +69,7 @@ class WhooshLibrary(local.Library):
     def load(self):
         self._index.refresh()
         with self._index.searcher() as searcher:
-            collector = _CountingCollector()
-            query = whoosh.query.Term('type', 'track')
-            searcher.search_with_collector(query, collector)
-        return collector.count
+            return searcher.doc_frequency('type', 'track')
 
     def lookup(self, uri):
         with self._index.searcher() as searcher:
