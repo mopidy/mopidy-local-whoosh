@@ -1,4 +1,4 @@
 include LICENSE
 include MANIFEST.in
 include README.rst
-include mopidy_local-whoosh/ext.conf
+include mopidy_local_whoosh/ext.conf
