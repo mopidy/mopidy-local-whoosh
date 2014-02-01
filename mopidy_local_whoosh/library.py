@@ -59,14 +59,17 @@ class WhooshLibrary(local.Library):
         self._data_dir = os.path.join(config['local']['data_dir'], b'whoosh')
         self._writer = None
         self._counts = None
-
-        if not os.path.exists(self._data_dir):
-            path.get_or_create_dir(self._data_dir)
-            self._index = whoosh.index.create_in(self._data_dir, schema)
-        else:
-            self._index = whoosh.index.open_dir(self._data_dir)
+        self._index = None
 
     def load(self):
+        if not self._index:
+            if not os.path.exists(self._data_dir):
+                path.get_or_create_dir(self._data_dir)
+                self._index = whoosh.index.create_in(self._data_dir, schema)
+            else:
+                # TODO: this can fail on bad index versions
+                self._index = whoosh.index.open_dir(self._data_dir)
+
         self._index.refresh()
         with self._index.searcher() as searcher:
             return searcher.doc_frequency('type', 'track')
