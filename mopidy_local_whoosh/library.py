@@ -1,6 +1,5 @@
 from __future__ import unicode_literals
 
-import collections
 import logging
 import os
 import re
@@ -14,7 +13,7 @@ from mopidy.utils import path
 
 from whoosh import collectors, fields, index, query as query_lib
 
-logger = logging.getLogger('mopidy_local_whoosh.library')
+logger = logging.getLogger(__name__)
 
 schema = fields.Schema(
     uri=fields.ID(stored=True, unique=True),
@@ -35,6 +34,7 @@ mapping = {'uri': 'uri',
 
 
 class _CountingCollector(collectors.Collector):
+    """Collector which only counts documents found without fetching."""
     def prepare(self, top_searcher, q, context):
         super(_CountingCollector, self).prepare(top_searcher, q, context)
         self.count = 0
@@ -65,7 +65,7 @@ class WhooshLibrary(local.Library):
     def __init__(self, config):
         self._data_dir = os.path.join(config['local']['data_dir'], b'whoosh')
         self._writer = None
-        self._directories = set()
+        self._counts = None
 
         if not os.path.exists(self._data_dir):
             path.get_or_create_dir(self._data_dir)
@@ -105,6 +105,7 @@ class WhooshLibrary(local.Library):
 
     def search(self, query=None, limit=100, offset=0, uris=None, exact=False):
         # TODO: add limit and offset, and total to results
+
         parts = [query_lib.Term('type', 'track')]
         for name, values in query.items():
             if name not in mapping:
@@ -135,17 +136,24 @@ class WhooshLibrary(local.Library):
 
     def begin(self):
         self._writer = self._index.writer()
+        self._counts = {}
 
         with self._index.reader() as reader:
-            for docnum, document in reader.iter_docs():
-                if document['type'] == 'track':
-                    yield document['track']
+            for docnum, doc in reader.iter_docs():
+                self._counts.setdefault(doc['parent'], 0)
+                self._counts[doc['parent']] += 1
+
+                if doc['type'] == 'directory':
+                    self._counts.setdefault(doc['uri'], 0)
+                elif doc['type'] == 'track':
+                    yield doc['track']
 
     def add(self, track):
         content = [track.name, track.album.name]
         content.extend(a.name for a in track.artists)
         refs = _track_to_refs(track)
 
+        # Add track to search index:
         self._writer.update_document(
             uri=unicode(track.uri), type='track',
             parent=refs[-2].uri, pathname=refs[-1].name,
@@ -153,25 +161,39 @@ class WhooshLibrary(local.Library):
             artists=' '.join(a.name for a in track.artists),
             content=' '.join(content), track=track)
 
-        # Loop over everything between root and track:
-        for i in range(1, len(refs)-1):
+        # Add any missing directories to search index:
+        for i in reversed(range(1, len(refs)-1)):
             uri = unicode(refs[i].uri)
             name = refs[i].name
             parent = unicode(refs[i-1].uri)
 
-            if uri in self._directories:
-                continue
-            self._directories.add(uri)
+            self._counts.setdefault(uri, 0)
+            self._counts[uri] += 1
 
-            with self._index.searcher() as searcher:
-                if searcher.document(uri=uri):
-                    continue
+            if self._counts[uri] > 1:
+                break
 
             self._writer.update_document(
                 uri=uri, type='directory', parent=parent, pathname=name)
 
     def remove(self, uri):
-        self._writer.delete_by_term('uri', uri)
+        # Traverse up tree as long as dir is empty, also handles initial track
+        while self._counts.get(uri, 0) < 1:
+
+            # Lookup the uri to get its parent.
+            with self._index.searcher() as searcher:
+                result = searcher.document(uri=uri)
+
+            # Delete the uri and remove its count if it had one.
+            self._writer.delete_by_term('uri', uri)
+            self._counts.pop(uri, None)
+
+            if not result:
+                break
+
+            # Move up to the parent and reduce its count by one.
+            uri = result['parent']
+            self._counts[uri] -= 1
 
     def flush(self):
         self._writer.commit(merge=False)
@@ -179,32 +201,6 @@ class WhooshLibrary(local.Library):
         return True
 
     def close(self):
-        self.flush()  # Make sure state gets to disk
-
-        counts = collections.defaultdict(int)
-        parents = {}
-
-        # Loop over everything to count folders
-        with self._index.reader() as reader:
-            for docnum, doc in reader.iter_docs():
-                if doc['type'] == 'directory':
-                    counts.setdefault(doc['uri'], 0)
-                counts[doc['parent']] += 1
-                parents[doc['uri']] = doc['parent']
-
-        # Delete empty folders until we can't find any
-        while True:
-            initial_size = len(counts)
-            for uri, count in counts.items():
-                if count < 1:
-                    counts[parents[uri]] -= 1
-                    self._writer.delete_by_term('uri', uri)
-                    del counts[uri]
-
-            if initial_size == len(counts):
-                break
-
-        # Force write + optimization of index now that we are done cleaning.
         self._writer.commit(optimize=True)
 
     def clear(self):
