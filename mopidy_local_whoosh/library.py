@@ -101,7 +101,7 @@ class WhooshLibrary(local.Library):
     def search(self, query=None, limit=100, offset=0, uris=None, exact=False):
         # TODO: add limit and offset, and total to results
 
-        parts = [whoosh.query.Term('type', 'track')]
+        parts = []
         for name, values in query.items():
             if name not in MAPPING:
                 logger.debug('Skipping field: %s', name)
@@ -126,6 +126,11 @@ class WhooshLibrary(local.Library):
 
             parts.append(whoosh.query.Or(terms))
 
+        if not parts:
+            logger.debug('Aborting search due to empty query.')
+            return SearchResult(tracks=[])
+
+        parts.append(whoosh.query.Term('type', 'track'))
         whoosh_query = whoosh.query.And(parts)
         logger.debug('Performing search: %s', whoosh_query)
 
