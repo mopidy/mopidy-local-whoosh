@@ -29,11 +29,13 @@ schema = whoosh.fields.Schema(
     content=whoosh.fields.TEXT(),
     track=whoosh.fields.STORED())
 
-mapping = {'uri': 'uri',
+MAPPING = {'uri': 'uri',
            'track_name': 'name',
            'album': 'album',
            'artist': 'artists',
            'any': 'content'}
+
+TOKENIZE = ('track_name', 'album', 'artist', 'any')
 
 
 def _track_to_refs(track):
@@ -101,21 +103,26 @@ class WhooshLibrary(local.Library):
 
         parts = [whoosh.query.Term('type', 'track')]
         for name, values in query.items():
-            if name not in mapping:
+            if name not in MAPPING:
+                logger.debug('Skipping field: %s', name)
                 continue
 
             terms = []
-            field_name = mapping[name]
+            field_name = MAPPING[name]
             field = schema[field_name]
 
             for value in values:
                 tokens = field.process_text(value, mode="query")
-                if exact:
-                    terms.append(whoosh.query.Phrase(field_name, list(tokens)))
+
+                if name not in TOKENIZE:
+                    term = whoosh.query.Term(field_name, value)
+                elif exact:
+                    term = whoosh.query.Phrase(field_name, list(tokens))
                 else:
-                    fuzzy_phrase = whoosh.query.And([
+                    term = whoosh.query.And([
                         whoosh.query.FuzzyTerm(field_name, t) for t in tokens])
-                    terms.append(fuzzy_phrase)
+
+                terms.append(term)
 
             parts.append(whoosh.query.Or(terms))
 
