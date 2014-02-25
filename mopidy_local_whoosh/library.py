@@ -77,6 +77,8 @@ class WhooshLibrary(local.Library):
             return searcher.doc_frequency('type', 'track')
 
     def lookup(self, uri):
+        assert self._index, 'load() must have been called at least once'
+
         with self._index.searcher() as searcher:
             result = searcher.document(uri=uri, type='track')
             if result:
@@ -84,8 +86,9 @@ class WhooshLibrary(local.Library):
         return None
 
     def browse(self, uri):
-        result = []
+        assert self._index, 'load() must have been called at least once'
 
+        result = []
         with self._index.searcher() as searcher:
             query = whoosh.query.Term('parent', uri)
             for doc in searcher.search(query, limit=None):
@@ -98,8 +101,9 @@ class WhooshLibrary(local.Library):
         result.sort(key=lambda ref: (ref.type, ref.name))
         return result
 
+    # TODO: add limit and offset, and total to results
     def search(self, query=None, limit=100, offset=0, uris=None, exact=False):
-        # TODO: add limit and offset, and total to results
+        assert self._index, 'load() must have been called at least once'
 
         parts = []
         for name, values in query.items():
@@ -141,6 +145,8 @@ class WhooshLibrary(local.Library):
         return SearchResult(tracks=tracks)
 
     def begin(self):
+        assert self._index, 'load() must have been called at least once'
+
         self._writer = self._index.writer()
         self._counts = {}
 
@@ -158,6 +164,8 @@ class WhooshLibrary(local.Library):
                     yield doc['track']
 
     def add(self, track):
+        assert self._writer, 'begin() must have been called'
+
         content = [track.name, track.album.name]
         content.extend(a.name for a in track.artists)
         refs = _track_to_refs(track)
@@ -186,6 +194,8 @@ class WhooshLibrary(local.Library):
                 uri=uri, type='directory', parent=parent, pathname=name)
 
     def remove(self, uri):
+        assert self._writer, 'begin() must have been called'
+
         # Traverse up tree as long as dir is empty, also handles initial track
         while self._counts.get(uri, 0) < 1:
 
@@ -205,11 +215,13 @@ class WhooshLibrary(local.Library):
             self._counts[uri] -= 1
 
     def flush(self):
+        assert self._writer, 'begin() must have been called'
         self._writer.commit(merge=False)
         self._writer = self._index.writer()
         return True
 
     def close(self):
+        assert self._writer, 'begin() must have been called'
         self._writer.commit(optimize=True)
 
     def clear(self):
