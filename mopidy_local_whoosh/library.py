@@ -175,8 +175,8 @@ class WhooshLibrary(local.Library):
             uri=unicode(track.uri), type='track',
             parent=refs[-2].uri, pathname=refs[-1].name,
             name=track.name, album=track.album.name,
-            artists=' '.join(a.name for a in track.artists),
-            content=' '.join(content), track=track)
+            artists=u' '.join(a.name for a in track.artists),
+            content=u' '.join([c for c in content if c]), track=track)
 
         # Add any missing directories to search index:
         for i in reversed(range(1, len(refs)-1)):
