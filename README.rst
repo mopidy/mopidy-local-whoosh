@@ -1,6 +1,6 @@
-****************************
+*******************
 Mopidy-Local-Whoosh
-****************************
+*******************
 
 .. image:: https://pypip.in/v/Mopidy-Local-Whoosh/badge.png
     :target: https://pypi.python.org/pypi/Mopidy-Local-Whoosh/
@@ -64,7 +64,7 @@ Project resources
 Changelog
 =========
 
-v0.1.0 (UNRELEASED)
-----------------------------------------
+v0.1.0 (2014-02-25)
+-------------------
 
 - Initial release.
