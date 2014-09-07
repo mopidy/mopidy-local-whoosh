@@ -1,6 +1,6 @@
-****************************
+*******************
 Mopidy-Local-Whoosh
-****************************
+*******************
 
 .. image:: https://pypip.in/v/Mopidy-Local-Whoosh/badge.png
     :target: https://pypi.python.org/pypi/Mopidy-Local-Whoosh/
@@ -20,6 +20,17 @@ Mopidy-Local-Whoosh
 
 Whoosh local library extension.
 
+Status
+======
+
+Whoosh support has been an experiment and a proof of concept to test out
+the Mopidy APIs for alternate local library support more than anything else.
+
+At this point in time I would not recommend using it as it is not being actively
+worked on. If you are interested in fixing this please do get in touch or start
+sending pull requests :-)
+
+In the meantime take a look at https://github.com/tkem/mopidy-local-sqlite
 
 Installation
 ============
@@ -65,6 +76,6 @@ Changelog
 =========
 
 v0.1.0 (2014-02-25)
-----------------------------------------
+-------------------
 
 - Initial release.
