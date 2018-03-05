@@ -6,10 +6,6 @@ Mopidy-Local-Whoosh
     :target: https://pypi.python.org/pypi/Mopidy-Local-Whoosh/
     :alt: Latest PyPI version
 
-.. image:: https://img.shields.io/pypi/dm/Mopidy-Local-Whoosh.svg
-    :target: https://pypi.python.org/pypi/Mopidy-Local-Whoosh/
-    :alt: Number of PyPI downloads
-
 .. image:: https://travis-ci.org/mopidy/mopidy-local-whoosh.png?branch=master
     :target: https://travis-ci.org/mopidy/mopidy-local-whoosh
     :alt: Travis CI build status
