@@ -2,11 +2,11 @@
 Mopidy-Local-Whoosh
 *******************
 
-.. image:: https://pypip.in/v/Mopidy-Local-Whoosh/badge.png
+.. image:: https://img.shields.io/pypi/v/Mopidy-Local-Whoosh.svg
     :target: https://pypi.python.org/pypi/Mopidy-Local-Whoosh/
     :alt: Latest PyPI version
 
-.. image:: https://pypip.in/d/Mopidy-Local-Whoosh/badge.png
+.. image:: https://img.shields.io/pypi/dm/Mopidy-Local-Whoosh.svg
     :target: https://pypi.python.org/pypi/Mopidy-Local-Whoosh/
     :alt: Number of PyPI downloads
 
